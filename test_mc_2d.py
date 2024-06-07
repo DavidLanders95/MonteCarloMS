@@ -54,15 +54,9 @@ def run_notebook():
     # Make cupy arrays
     det_yx_coords = cp.asarray(det_yx_coords)
 
-    # Initialize final image and aperture phase shifts arrays on GPU
-    final_image_real = cp.zeros([num_px_det_y, num_px_det_x], dtype=cp.float64)
-    final_image_imag = cp.zeros([num_px_det_y, num_px_det_x], dtype=cp.float64)
-
     final_image, ray_aper_coord, ray_det_coord, aperture_mask = (
         monte_carlo_diffraction_cupy_2D(
             num_rays,
-            final_image_real,
-            final_image_imag,
             source_width_x,
             source_width_y,
             slit_radius=aperture_diameter / 2,
