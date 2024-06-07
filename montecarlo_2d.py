@@ -1,4 +1,3 @@
-import numpy as np
 import cupy as cp
 import cupyx as cpx
 
@@ -40,7 +39,7 @@ def monte_carlo_diffraction_cupy_2D(
         # Remove rays that did not go through the
         # aperture and form an integer mask with it
         U = (
-            np.sqrt((source_x**2 + source_y**2)) < slit_radius
+            cp.sqrt((source_x**2 + source_y**2)) < slit_radius
         ).astype(cp.int32)
 
         rand_det_idx_x = cp.random.randint(x_det, size=current_batch_size)
@@ -64,13 +63,13 @@ def monte_carlo_diffraction_cupy_2D(
         ray_distance = cp.linalg.norm(ray, axis=0)
 
         # Wavenumber
-        k = 2 * np.pi / wavelength
+        k = 2 * cp.pi / wavelength
 
         # Get amplitude and phase of all rays
         amplitude = (
             U
             * (1 / ray_distance)
-            * (1 / (2 * np.pi))
+            * (1 / (2 * cp.pi))
             * (1j * k * z_prop / ray_distance)
             / pdf
         )
@@ -78,7 +77,7 @@ def monte_carlo_diffraction_cupy_2D(
 
         # Get diffraction field at detector by summing
         # the point sources from the aperture.
-        complex_rays = amplitude * (np.exp(1j * phase))
+        complex_rays = amplitude * (cp.exp(1j * phase))
 
         # Add complex wavefront to each pixel in the image
         cpx.scatter_add(
