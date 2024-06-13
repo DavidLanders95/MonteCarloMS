@@ -47,6 +47,7 @@ class Sample:
     illuminated_r: float
     illuminated_cyx: tuple[float, float] | None
     phase_shift: xp.ndarray  # premultiplied by xp.exp(1j)!
+    periodic: bool
 
     def _get_interpolator(self):
         try:
@@ -97,6 +98,11 @@ class Sample:
 
     def _phase_shift(self, wave, pos_yx):
         interpolator = self._get_interpolator()
+        if self.periodic:
+            size = xp.asarray(self.size)[np.newaxis, :]
+            pos_yx = pos_yx + size / 2.
+            pos_yx %= size
+            pos_yx -= size / 2.
         wave *= interpolator(pos_yx)
 
 
