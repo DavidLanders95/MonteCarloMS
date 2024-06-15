@@ -141,6 +141,8 @@ class Detector:
         cimage,
         source_yx,
         source_z,
+        source_area,
+        num_rays,
         source_wave,
         wavelength,
         rng=None,
@@ -153,9 +155,10 @@ class Detector:
             z_prop,
             wavelength,
         )  # (num_pixels, batch_size)
+        delta_wave *= (source_area / num_rays)
         all_waves = (
             source_wave[xp.newaxis, ...]
-            * xp.exp(1j * xp.angle(delta_wave))
+            * delta_wave
         )
         cimage += all_waves.sum(axis=-1).reshape(self.shape)
 
@@ -226,15 +229,15 @@ def propagate(dyx, z_prop, wavelength):
     )
 
     # Get the change to the complex ray over this propagation
-    dwave = (
-        k
+    wave = (
+        (-1j + 1 / (k * ray_distance))
         * z_prop
         * xp.exp(
-            1j * ((k * ray_distance) + xp.pi / 2.0),
+            1j * k * ray_distance,
         )
-        / (2 * xp.pi * ray_distance2)
+        / (wavelength * ray_distance2)
     )
-    return dwave, ray_distance
+    return wave, ray_distance
 
 
 def run_model(
@@ -257,7 +260,7 @@ def run_model(
         )
         source = a0.random_on(batch_size, rng)
         source_z = a0.z
-        a0._phase_shift(wave, source)
+        # a0._phase_shift(wave, source)
 
         if a1 is not None:
             dest = a1.random_on(batch_size, rng)
@@ -271,10 +274,13 @@ def run_model(
             source = dest
             source_z = a1.z
 
+        source_area = xp.pi * a0.radius ** 2
         detector.accumulate_on(
             image,
             source,
             source_z,
+            source_area,
+            num_rays,
             wave,
             wavelength,
             rng=rng,
