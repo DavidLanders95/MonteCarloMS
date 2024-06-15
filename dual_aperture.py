@@ -209,15 +209,15 @@ def propagate(dyx, z_prop, wavelength):
     )
 
     # Get the change to the complex ray over this propagation
-    dwave = (
-        k
+    wave = (
+        (-1j + 1 / (k * ray_distance))
         * z_prop
         * xp.exp(
-            1j * ((k * ray_distance) + xp.pi / 2.0),
+            1j * k * ray_distance,
         )
-        / (2 * xp.pi * ray_distance2)
+        / (wavelength * ray_distance2)
     )
-    return dwave, ray_distance
+    return wave, ray_distance
 
 
 def run_model(
