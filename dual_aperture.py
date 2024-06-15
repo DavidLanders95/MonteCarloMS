@@ -39,6 +39,10 @@ class Aperture(NamedTuple):
     def _phase_shift(self, wave, pos_yx):
         return
 
+    @property
+    def sample_area(self):
+        return xp.pi * self.radius ** 2
+
 
 @dataclass
 class Sample:
@@ -96,6 +100,10 @@ class Sample:
             axis=1,
         )
 
+    @property
+    def sample_area(self):
+        return xp.pi * self.illuminated_r ** 2
+
     def _phase_shift(self, wave, pos_yx):
         interpolator = self._get_interpolator()
         if self.periodic:
@@ -138,6 +146,10 @@ class Detector:
 
     def sample_points(self, max_num: int, rng: xp.random.RandomState):
         return self.coords_yx  # (num_pixels, 2)
+
+    @property
+    def sample_area(self):
+        return xp.prod(xp.asarray(self.size))
 
     def _phase_shift(self, wave, pos_yx):
         return
@@ -229,6 +241,7 @@ def run_model(
 
     rng = xp.random.RandomState()
     image = components[-1].get_array()
+    rays_pp = 0
 
     batch_size = min(batch_size, num_rays)
     for _ in tqdm.trange(max(1, num_rays // batch_size)):
@@ -246,9 +259,16 @@ def run_model(
                 abs(next_component.z - component.z),
                 wavelength
             )
-            delta_wave *= xp.exp(1j * xp.angle(wave[np.newaxis, ...]))
-            wave = delta_wave.sum(axis=-1)
-        image += wave.reshape(image.shape)
+            num_rays_step = source_points.shape[0]
+            delta_wave *= (component.sample_area / num_rays_step)
+            wave = (wave[np.newaxis, ...] * delta_wave).sum(axis=-1)
+            component = next_component
+            source_points = dest_points
+
+        image += (wave.reshape(image.shape) * num_rays_step)
+        rays_pp += num_rays_step
+
+    image /= max(rays_pp, 1)
 
     try:
         image = image.get()
