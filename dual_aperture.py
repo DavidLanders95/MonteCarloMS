@@ -17,9 +17,9 @@ class Aperture(NamedTuple):
     radius: float
     cyx: tuple[float, float] | None
 
-    def random_on(self, num: int, rng: xp.random.RandomState):
+    def sample_points(self, max_num: int, rng: xp.random.RandomState):
         random = rng.random_sample(
-            size=(num, 2)
+            size=(max_num, 2)
         )
         random *= xp.asarray((
             self.radius ** 2,
@@ -77,9 +77,9 @@ class Sample:
     #     )
     #     return random
 
-    def random_on(self, num: int, rng: xp.random.RandomState):
+    def sample_points(self, max_num: int, rng: xp.random.RandomState):
         random = rng.random_sample(
-            size=(num, 2)
+            size=(max_num, 2)
         )
         random *= xp.asarray((
             self.illuminated_r ** 2,
@@ -136,28 +136,11 @@ class Detector:
             self._coords_yx = self.build_coords_yx()
             return self._coords_yx
 
-    def accumulate_on(
-        self,
-        cimage,
-        source_yx,
-        source_z,
-        source_wave,
-        wavelength,
-        rng=None,
-    ):
-        source_yx = source_yx[xp.newaxis, ...]  # (1, batch_size, 2)
-        pixel_yx = self.coords_yx[:, xp.newaxis, ...]  # (num_pixels, 1, 2)
-        z_prop = abs(source_z - self.z)
-        delta_wave, _ = propagate(
-            pixel_yx - source_yx,
-            z_prop,
-            wavelength,
-        )  # (num_pixels, batch_size)
-        all_waves = (
-            source_wave[xp.newaxis, ...]
-            * xp.exp(1j * xp.angle(delta_wave))
-        )
-        cimage += all_waves.sum(axis=-1).reshape(self.shape)
+    def sample_points(self, max_num: int, rng: xp.random.RandomState):
+        return self.coords_yx  # (num_pixels, 2)
+
+    def _phase_shift(self, wave, pos_yx):
+        return
 
 
 class PlaneWaveDetector(Detector):
@@ -240,45 +223,32 @@ def propagate(dyx, z_prop, wavelength):
 def run_model(
     num_rays: int,
     wavelength: float,
-    a0: Aperture,
-    a1: Aperture | None,
-    detector: Detector,
+    components: tuple[Aperture | Sample | Detector],
     batch_size=int(1e2),
 ) -> xp.ndarray:
 
     rng = xp.random.RandomState()
-    image = detector.get_array()
+    image = components[-1].get_array()
 
     batch_size = min(batch_size, num_rays)
     for _ in tqdm.trange(max(1, num_rays // batch_size)):
+        component = components[0]
+        source_points = component.sample_points(batch_size, rng)
         wave = xp.ones(
-            (batch_size,),
+            (source_points.shape[0],),
             dtype=xp.complex128,
         )
-        source = a0.random_on(batch_size, rng)
-        source_z = a0.z
-        a0._phase_shift(wave, source)
-
-        if a1 is not None:
-            dest = a1.random_on(batch_size, rng)
-            a1._phase_shift(wave, dest)
+        for next_component in components[1:]:
+            dest_points = next_component.sample_points(batch_size, rng)
+            component._phase_shift(wave, source_points)
             delta_wave, _ = propagate(
-                dest - source,
-                abs(source_z - a1.z),
+                dest_points[:, np.newaxis, :] - source_points[np.newaxis, ...],
+                abs(next_component.z - component.z),
                 wavelength
             )
-            wave *= xp.exp(1j * xp.angle(delta_wave))
-            source = dest
-            source_z = a1.z
-
-        detector.accumulate_on(
-            image,
-            source,
-            source_z,
-            wave,
-            wavelength,
-            rng=rng,
-        )
+            delta_wave *= xp.exp(1j * xp.angle(wave[np.newaxis, ...]))
+            wave = delta_wave.sum(axis=-1)
+        image += wave.reshape(image.shape)
 
     try:
         image = image.get()
