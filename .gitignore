@@ -1,3 +1,5 @@
 *.lprof
 __pycache__/
 *.__pycache__
+*-checkpoint.ipynb
+.vscode/
