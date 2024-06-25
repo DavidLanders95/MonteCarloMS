@@ -48,6 +48,7 @@ class Sample:
     illuminated_cyx: tuple[float, float] | None
     phase_shift: xp.ndarray  # premultiplied by xp.exp(1j)!
     periodic: bool
+    cutoff: float
 
     def _get_interpolator(self):
         try:
@@ -66,6 +67,7 @@ class Sample:
             )
             return self._interpolator
 
+    '''Square Aperture Random Sampling'''
     # def random_on(self, num: int, rng: xp.random.RandomState):
     #     random = rng.random_sample(
     #         size=(num, 2)
@@ -77,17 +79,77 @@ class Sample:
     #     )
     #     return random
 
+    '''Circular Aperture Random Sampling'''
+    # def random_on(self, num: int, rng: xp.random.RandomState):
+    #     random = rng.random_sample(
+    #         size=(num, 2)
+    #     )
+    #     random *= xp.asarray((
+    #         self.illuminated_r ** 2,
+    #         2 * xp.pi,
+    #     ), dtype=xp.float32)
+    #     source_r = xp.sqrt(random[:, 0])
+    #     source_y = source_r * xp.sin(random[:, 1])
+    #     source_x = source_r * xp.cos(random[:, 1])
+    #     if self.illuminated_cyx is not None:
+    #         source_y += self.illuminated_cyx[0]
+    #         source_x += self.illuminated_cyx[1]
+    #     return xp.stack(
+    #         (source_y, source_x),
+    #         axis=1,
+    #     )
+    
+    # '''Phase Cutoff Random Sampling'''
+    # def random_on(self, num: int, rng: xp.random.RandomState):
+        
+    #     py, px = self.phase_shift.shape
+    #     sy, sx = xp.asarray(self.size) / 2.
+    #     yv = xp.linspace(-sy, sy, num=py, endpoint=True)
+    #     xv = xp.linspace(-sx, sx, num=px, endpoint=True)
+        
+    #     large_phases = xp.where((xp.abs(xp.angle(self.phase_shift)) > self.cutoff))
+
+        
+    #     source_y = yv[large_phases[0]]
+    #     source_x = xv[large_phases[1]]
+    #     idcs = rng.randint(0, source_y.size * source_x.size, size=num)
+    #     source_y = source_y[idcs]
+    #     source_x = source_x[idcs]
+        
+    #     if self.illuminated_cyx is not None:
+    #         source_y += self.illuminated_cyx[0]
+    #         source_x += self.illuminated_cyx[1]
+    #     return xp.stack(
+    #         (source_y, source_x),
+    #         axis=1,
+    #     )
+        
+    '''Weighted Phase Random Sampling'''
     def random_on(self, num: int, rng: xp.random.RandomState):
-        random = rng.random_sample(
-            size=(num, 2)
-        )
-        random *= xp.asarray((
-            self.illuminated_r ** 2,
-            2 * xp.pi,
-        ), dtype=xp.float32)
-        source_r = xp.sqrt(random[:, 0])
-        source_y = source_r * xp.sin(random[:, 1])
-        source_x = source_r * xp.cos(random[:, 1])
+        
+        py, px = self.phase_shift.shape
+        sy, sx = xp.asarray(self.size) / 2.
+        yv = xp.linspace(-sy, sy, num=py, endpoint=True)
+        xv = xp.linspace(-sx, sx, num=px, endpoint=True)
+        
+        phases = xp.abs(xp.angle(self.phase_shift))
+
+        # Normalize the absolute values to create a probability distribution
+        probabilities = phases / xp.sum(phases)
+    
+        # Create a flat copy of the array
+        p_flat = probabilities.flatten()
+
+        # Then, sample an index from the 1D array with the
+        # probability distribution from the original array
+        sampled_indices = xp.random.choice(a=p_flat.size, p=p_flat, size = num)
+
+        # Take this index and adjust it so it matches the original array
+        adjusted_index = xp.unravel_index(sampled_indices, probabilities.shape)
+        
+        source_y = yv[adjusted_index[0]]
+        source_x = xv[adjusted_index[1]]
+        
         if self.illuminated_cyx is not None:
             source_y += self.illuminated_cyx[0]
             source_x += self.illuminated_cyx[1]
@@ -95,7 +157,7 @@ class Sample:
             (source_y, source_x),
             axis=1,
         )
-
+    
     def _phase_shift(self, wave, pos_yx):
         interpolator = self._get_interpolator()
         if self.periodic:
